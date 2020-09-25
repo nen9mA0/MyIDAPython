@@ -1,0 +1,2 @@
+mov reg(eax), imm(0xff)
+lea 
