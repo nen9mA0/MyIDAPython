@@ -32,3 +32,7 @@
 ### restore_plt
 
 用来还原repair_plt的修复结果的，流程跟repair_plt一样，只不过是最后判断名字的时候把非默认名字改为默认名字而已（默认名字格式由restore_name决定）
+
+### rename_jfunc
+
+还没造完

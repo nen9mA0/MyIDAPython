@@ -1,7 +1,8 @@
-import idautils
-import idaapi
-import idc
+# import idautils
+# import idaapi
+# import idc
 
+import pdb
 import pickle
 import os
 
@@ -27,6 +28,10 @@ class Instruction(object):
         if self.opcode == rhs.opcode:
             if self.CmpOprand(self.oprand1, rhs.oprand1) and self.CmpOprand(self.oprand2, rhs.oprand2):
                 ret = True
+# for Debug
+        # print(self)
+        # print(rhs)
+        # print(ret)
         return ret
 
     def __str__(self):
@@ -84,14 +89,12 @@ class InstructionParser(Instruction):
     def GetDelim(self, mystr, ldelim, rdelim):
         lindex = mystr.find(ldelim)
         rindex = mystr.find(rdelim)
-        if lindex == -1:
-            llim = 0
+        if lindex == -1 or rindex == -1:
+            return ""
         else:
-            llim = lindex+1
-        if rindex == -1:
-            rlim = len(mystr)
-        else:
+            llim = lindex + 1
             rlim = rindex
+
         return mystr[llim:rlim]
 
     def ProcessOprandStr(self, oprand_type, oprand_str):
@@ -177,6 +180,8 @@ class Template:
                 mnem = idc.GetMnem(ea)                  # for quick compare, do not create Instruction every ins
                 if mnem == matching_ins.opcode:
                     current_ins = self.GetCurrentIns(mnem, ea)
+#for debug
+                    #print(match_index, max_index, hex(ea))
                     if matching_ins == current_ins:
                         if match_index == 0:
                             match_begin = ea
@@ -220,19 +225,21 @@ class Template:
 
 
 if __name__ == "__main__":          # example
-    tp = Template(["mov","add","mov","add void, reg(r12)","mov","and","add","mov","and","and","cmp","jz","pop","pop","add","jmp"])
+    #tp = Template(["mov","add","mov","add void, reg(r12)","mov","and","add","mov","and","and","cmp","jz","pop","pop","add","jmp"])
+    tp = Template(["add void, reg(eax)", "mov reg, void"])
     print tp
     print("===========")
-    segment_addr_start = 0x400770
-    segment_addr_end = 0x40A462
+    segment_addr_start = 0x4010c2
+    segment_addr_end = 0x40a104
     result = tp.Find(segment_addr_start, segment_addr_end)
     tp.PrintResult()
 
-    n = 0
-    for ins in tp.result:
-        n += 1
-        print("==== %d ====" %n)
-        for ea in ins:
-            mnem = idc.GetMnem(ea)
-            current_ins = tp.GetCurrentIns(mnem, ea)
-            print(current_ins)
+# print result instruction type and value
+    # n = 0
+    # for ins in tp.result:
+    #     n += 1
+    #     print("==== %d ====" %n)
+    #     for ea in ins:
+    #         mnem = idc.GetMnem(ea)
+    #         current_ins = tp.GetCurrentIns(mnem, ea)
+    #         print(current_ins)
