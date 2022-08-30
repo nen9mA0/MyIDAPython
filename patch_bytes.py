@@ -71,18 +71,21 @@ class HexPattern(object):
 
 
 class PatternPair(object):
-    def __init__(self, original, changed):
+    def __init__(self, original, changed, iscode):
         if original.hex_len != changed.hex_len:
             raise ValueError("Original Length Not Equal To Changed Length")
         self.original = original
         self.changed = changed
+        self.iscode = iscode
         self.changelog = []
         self.hex_len = original.hex_len
 
     def Replace(self, start, end):
-        if not self.original.do_find:
-            self.original.Find(start, end)
+        self.find(start, end)
         for addr in self.original.find_lst:
+            if self.iscode:
+                if not ida_bytes.is_code(addr):
+                    continue
             ida_bytes.patch_bytes(addr, self.changed.hex)
             change = {}
             change["original"] = self.original.byte_seq
@@ -91,6 +94,11 @@ class PatternPair(object):
             self.changelog.append(change)
             print("Addr: %x" %addr)
             print("%s change to %s" %(self.original.hex, self.changed.hex))
+
+    def Find(self, start, end):
+        if not self.original.do_find:
+            self.original.Find(start, end)
+        return self.original.find_lst
 
     def Revert(self, addr):
         mybytes = ida_bytes.get_bytes(addr, self.hex_len)
@@ -134,17 +142,34 @@ class Finder(object):
             if pattern["type"] == "hex" and pattern["enable"]:
                 original_hex = HexPattern(pattern["original"])
                 changed_hex = HexPattern(pattern["changed"])
-                pattern_lst.append(PatternPair(original_hex, changed_hex))
+                if "iscode" in pattern:
+                    iscode = pattern["iscode"]
+                else:
+                    iscode = False
+                pattern_lst.append(PatternPair(original_hex, changed_hex, iscode))
         self.pattern_lst = pattern_lst
 
     def FindAll(self):
+        find_dct = {}
         for name in self.segment_dct:
             start, end = self.segment_dct[name]
-            self.Find(start, end)
+            tmp_dct = self.Find(start, end)
+            for pattern_pair in tmp_dct:
+                if pattern_pair in find_dct:
+                    find_dct[pattern_pair].extend(tmp_dct[pattern_pair])
+                else:
+                    find_dct[pattern_pair] = tmp_dct[pattern_pair]
+        return find_dct
+            
 
     def Find(self, start, end):
+        tmp_dct = {}
         for pattern_pair in self.pattern_lst:
-            pattern_pair.original.Find(start, end)
+            find_lst = pattern_pair.Find(start, end)
+            if pattern_pair in tmp_dct:
+                raise ValueError("")
+            tmp_dct[pattern_pair] = find_lst
+        return tmp_dct
 
     def ReplaceAll(self):
         changelog = []
@@ -154,6 +179,16 @@ class Finder(object):
                 pattern_pair.Replace(start, end)
                 changelog.extend(pattern_pair.changelog)
         return changelog
+
+    def PrintAll(self):
+        find_dct = self.FindAll()
+        for pattern_pair in find_dct:
+            print("===== Pattern =====")
+            print("%s" %(pattern_pair.original))
+            find_lst = find_dct[pattern_pair]
+            for addr in find_lst:
+                print("%x" %addr)
+
 
     def __str__(self):
         mystr = ""
@@ -174,37 +209,42 @@ if __name__ == "__main__":
 
     if dct["type"] == "pattern":
         finder = Finder(dct)
-        changelog = finder.ReplaceAll()
 
-        dir_name = os.path.dirname(filename)
-        json_filename = os.path.basename(filename)
-        index = json_filename.rfind(".")
-        backup_filename = json_filename[:index] + "_patch_backup.json"
-        backup_file = os.path.join(dir_name, backup_filename)
+        act = dct["action"]
+        if act == "find":
+            finder.PrintAll()
+        elif act == "replace":
+            changelog = finder.ReplaceAll()
 
-        flag = True
-        if os.path.exists(backup_file):
-            try:
-                with open(backup_file, "r") as f:
-                    content = json.load(f)
-                content["changelog"].extend(changelog)
-                flag = False
-            except:
-                pass
-        if flag:
-            content = {}
-            content["type"] = "backup"
-            content["changelog"] = changelog
-        with open(backup_file, "w") as f:
-            json.dump(content, f)
-    elif dct["type"] == "backup":
-        for change in dct["changelog"]:
-            changed_hex = HexPattern(change["changed"])
-            original_hex = HexPattern(change["original"])
-            pattern_pair = PatternPair(original_hex, changed_hex)
-            pattern_pair.Revert(change["addr"])
+            dir_name = os.path.dirname(filename)
+            json_filename = os.path.basename(filename)
+            index = json_filename.rfind(".")
+            backup_filename = json_filename[:index] + "_patch_backup.json"
+            backup_file = os.path.join(dir_name, backup_filename)
 
-        backup_file = filename
-        dct["changelog"].clear()
-        with open(backup_file, "w") as f:
-            json.dump(dct, f)
+            flag = True
+            if os.path.exists(backup_file):
+                try:
+                    with open(backup_file, "r") as f:
+                        content = json.load(f)
+                    content["changelog"].extend(changelog)
+                    flag = False
+                except:
+                    pass
+            if flag:
+                content = {}
+                content["type"] = "backup"
+                content["changelog"] = changelog
+            with open(backup_file, "w") as f:
+                json.dump(content, f)
+        elif dct["type"] == "backup":
+            for change in dct["changelog"]:
+                changed_hex = HexPattern(change["changed"])
+                original_hex = HexPattern(change["original"])
+                pattern_pair = PatternPair(original_hex, changed_hex)
+                pattern_pair.Revert(change["addr"])
+
+            backup_file = filename
+            dct["changelog"].clear()
+            with open(backup_file, "w") as f:
+                json.dump(dct, f)
